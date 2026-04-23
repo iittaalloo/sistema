@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPO Analytics | Enterprise BI</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --primary: #0f172a; --accent: #3b82f6; --bg: #f1f5f9;
+            --card: #ffffff; --text: #334155; --border: #e2e8f0;
+            --danger: #ef4444; --success: #10b981; --warning: #f59e0b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { display: flex; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        /* Sidebar */
+        .sidebar { width: 260px; background: var(--primary); color: white; position: fixed; height: 100%; padding: 25px; z-index: 100; }
+        .logo { font-size: 20px; font-weight: 800; margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; }
+        .logo span { color: var(--accent); }
+        .nav-links { list-style: none; }
+        .nav-links li { padding: 12px 15px; margin-bottom: 8px; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 12px; font-size: 14px; transition: 0.2s; }
+        .nav-links li:hover, .nav-links li.active { background: var(--accent); color: white; }
+
+        /* Content Area */
+        .content { margin-left: 260px; padding: 30px; width: calc(100% - 260px); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .card { background: var(--card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1 { font-size: 20px; margin-bottom: 20px; color: var(--primary); font-weight: 700; }
+
+        /* Timer UI */
+        .grid-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        label { display: block; font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 5px; text-transform: uppercase; }
+        input, select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; outline: none; }
+        input:focus { border-color: var(--accent); }
+
+        .timer-display { font-size: 70px; font-weight: 800; font-family: 'Courier New', monospace; text-align: center; margin: 15px 0; color: var(--primary); }
+        .btn-group { display: flex; justify-content: center; gap: 10px; }
+
+        button { padding: 10px 18px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; font-size: 13px; transition: 0.2s; }
+        .btn-main { background: var(--accent); color: white; }
+        .btn-warn { background: var(--warning); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-outline { background: white; border: 1px solid var(--border); color: var(--text); }
+        button:hover:not(:disabled) { opacity: 0.9; }
+
+        /* Botões "apagadinhos" quando desabilitados */
+        button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(50%); }
+
+        /* Tables */
+        .table-wrap { overflow-x: auto; max-height: 500px; }
+        table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+        th { text-align: left; padding: 12px; background: #f8fafc; font-size: 11px; color: #64748b; border-bottom: 2px solid var(--border); cursor: pointer; position: sticky; top: 0; }
+        th:hover { background: #edf2f7; color: var(--accent); }
+        td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 11px; } /* Fonte padronizada */
+        .subtotal-row { background: var(--primary); color: white; font-weight: 700; font-size: 11px; }
+
+        /* BI Layout */
+        .bi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .chart-container { position: relative; height: 280px; width: 100%; }
+
+        /* Modals */
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-box { background: white; padding: 25px; border-radius: 12px; width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="logo">GPO<span>Analytics</span></div>
+        <ul class="nav-links">
+            <li class="active" data-target="timer-sec"><i class="fa-solid fa-clock"></i> <span>Operacional</span></li>
+            <li data-target="hist-sec"><i class="fa-solid fa-database"></i> <span>Histórico de Dados</span></li>
+            <li data-target="bi-sec"><i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span></li>
+            <li data-target="cat-sec"><i class="fa-solid fa-tags"></i> <span>Categorias</span></li>
+        </ul>
+    </aside>
+
+    <main class="content">
+
+        <section id="timer-sec" class="tab-content active">
+            <h1>Controle de Tempo</h1>
+            <div class="card">
+                <div class="grid-inputs">
+                    <div><label>Colaborador</label><input type="text" id="inCollab" placeholder="Nome..."></div>
+                    <div><label>Categoria</label><select id="selCat"></select></div>
+                    <div><label>Tarefa</label><input type="text" id="inTask" placeholder="Descrição da atividade..."></div>
+                </div>
+                <div class="timer-display" id="display">00:00:00</div>
+                <div class="btn-group">
+                    <button id="btnStart" class="btn-main"><i class="fa-solid fa-play"></i> INICIAR</button>
+                    <button id="btnPause" class="btn-warn" disabled><i class="fa-solid fa-pause"></i> PAUSAR</button>
+                    <button id="btnStop" class="btn-danger" disabled><i class="fa-solid fa-check-double"></i> CONCLUIR</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="hist-sec" class="tab-content">
+            <h1>Explorador de Dados</h1>
+            <div class="card">
+                <div class="grid-inputs" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
+                    <div><label>Busca</label><input type="text" id="globalFilter" placeholder="Busque em qualquer campo..." oninput="renderHistory()"></div>
+                    <div><label>Filtro Categoria</label><select id="filterCat" onchange="renderHistory()"></select></div>
+                    <div style="display:flex; align-items:flex-end; gap:8px;">
+                        <button onclick="exportExcel()" class="btn-outline" style="width:100%"><i class="fa-solid fa-download"></i> Exportar</button>
+                    </div>
+                    <div style="display:flex; align-items:flex-end; gap:8px;">
+                        <button onclick="document.getElementById('importFile').click()" class="btn-outline" style="width:100%"><i class="fa-solid fa-upload"></i> Importar</button>
+                        <input type="file" id="importFile" hidden accept=".csv" onchange="importExcel(event)">
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table id="histTable">
+                        <thead>
+                            <tr>
+                                <th onclick="sortTable('collab')">Colaborador <i class="fa-solid fa-sort"></i></th>
+                                <th onclick="sortTable('cat')">Categoria <i class="fa-solid fa-sort"></i></th>
+                                <th onclick="sortTable('task')">Tarefa <i class="fa-solid fa-sort"></i></th>
+                                <th onclick="sortTable('startStr')">Início <i class="fa-solid fa-sort"></i></th>
+                                <th onclick="sortTable('endStr')">Fim <i class="fa-solid fa-sort"></i></th>
+                                <th onclick="sortTable('pauseMs')">T. Pausado <i class="fa-solid fa-sort"></i></th>
+                                <th onclick="sortTable('pCount')">Pausas <i class="fa-solid fa-sort"></i></th>
+                                <th onclick="sortTable('netMs')">Tempo Líquido <i class="fa-solid fa-sort"></i></th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="histBody"></tbody>
+                        <tfoot>
+                            <tr class="subtotal-row">
+                                <td colspan="7" style="text-align:right">SUBTOTAL FILTRADO:</td>
+                                <td id="subTotal" colspan="2">00:00:00</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="bi-sec" class="tab-content">
+            <h1>Dashboard</h1>
+            <div class="card">
+                <div class="grid-inputs" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+                    <div><label>Colaborador</label><select id="biFilterCollab" onchange="initBI()"></select></div>
+                    <div><label>Categoria</label><select id="biFilterCat" onchange="initBI()"></select></div>
+                    <div><label>Data Início</label><input type="date" id="biFilterStartDate" onchange="initBI()"></div>
+                    <div><label>Data Fim</label><input type="date" id="biFilterEndDate" onchange="initBI()"></div>
+                </div>
+            </div>
+            <div class="bi-grid">
+                <div class="card"><h3>Tempo por Colaborador</h3><div class="chart-container"><canvas id="chCollab"></canvas></div></div>
+                <div class="card"><h3>Distribuição por Categoria</h3><div class="chart-container"><canvas id="chCatTime"></canvas></div></div>
+                <div class="card"><h3>Volumetria de Atividades</h3><div class="chart-container"><canvas id="chVol"></canvas></div></div>
+                <div class="card"><h3>Eficiência Operacional</h3><div class="chart-container"><canvas id="chEff"></canvas></div></div>
+            </div>
+        </section>
+
+        <section id="cat-sec" class="tab-content">
+            <h1>Cadastro de Categorias</h1>
+            <div class="card">
+                <div class="grid-inputs" style="grid-template-columns: 1fr 2fr auto;">
+                    <div><label>Nome</label><input type="text" id="newCatName"></div>
+                    <div><label>Descrição</label><input type="text" id="newCatDesc"></div>
+                    <div style="display:flex; align-items:flex-end;">
+                        <button onclick="addCategory()" class="btn-main"><i class="fa-solid fa-plus"></i> Adicionar Categoria</button>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th onclick="sortCatTable('name')">Categoria <i class="fa-solid fa-sort"></i></th>
+                                <th onclick="sortCatTable('desc')">Descrição <i class="fa-solid fa-sort"></i></th>
+                                <th width="100">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="catBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div class="modal" id="editModal">
+        <div class="modal-box">
+            <h2 style="margin-bottom:15px">Editar Registro</h2>
+            <label>Colaborador</label><input type="text" id="edCollab"><br><br>
+            <label>Categoria</label><select id="edCat"></select><br><br>
+            <label>Tarefa</label><input type="text" id="edTask"><br><br>
+            <div class="btn-group" style="justify-content: flex-end;">
+                <button class="btn-outline" onclick="closeEdit()">Cancelar</button>
+                <button class="btn-main" onclick="saveEdit()">Salvar Alterações</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let db = JSON.parse(localStorage.getItem('gpo_db_final')) || [];
+        let cats = JSON.parse(localStorage.getItem('gpo_cats_final')) || [
+            {name: "Auditoria", desc: "Conferência de dados ERP"},
+            {name: "Reunião", desc: "Alinhamentos e GMD"}
+        ];
+
+        let timer, startT, pauseT, totalPause = 0, pCount = 0, currentSort = {col: 'id', asc: false};
+
+        window.onload = () => { refreshCats(); renderHistory(); refreshBIFilters(); }; // Adicionado refreshBIFilters
+
+        // Navegação
+        document.querySelectorAll('.nav-links li').forEach(li => {
+            li.onclick = () => {
+                document.querySelectorAll('.nav-links li, .tab-content').forEach(x => x.classList.remove('active'));
+                li.classList.add('active');
+                document.getElementById(li.dataset.target).classList.add('active');
+                if(li.dataset.target === 'bi-sec') initBI();
+            }
+        });
+
+        // Timer
+        document.getElementById('btnStart').onclick = () => {
+            if(!document.getElementById('inCollab').value || !document.getElementById('inTask').value) return alert("Preencha os campos!");
+            startT = new Date(); totalPause = 0; pCount = 0;
+            timer = setInterval(() => {
+                document.getElementById('display').innerText = formatMs((new Date() - startT) - totalPause);
+            }, 1000);
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('btnPause').disabled = false;
+            document.getElementById('btnStop').disabled = false;
+        };
+
+        document.getElementById('btnPause').onclick = () => {
+            if(timer) {
+                clearInterval(timer); timer = null; pauseT = new Date(); pCount++;
+                document.getElementById('btnPause').innerHTML = '<i class="fa-solid fa-play"></i> RETOMAR';
+            } else {
+                totalPause += (new Date() - pauseT);
+                timer = setInterval(() => {
+                    document.getElementById('display').innerText = formatMs((new Date() - startT) - totalPause);
+                }, 1000);
+                document.getElementById('btnPause').innerHTML = '<i class="fa-solid fa-pause"></i> PAUSAR';
+            }
+        };
+
+        document.getElementById('btnStop').onclick = () => {
+            clearInterval(timer);
+            const end = new Date();
+            db.push({
+                id: Date.now(),
+                collab: document.getElementById('inCollab').value,
+                cat: document.getElementById('selCat').value,
+                task: document.getElementById('inTask').value,
+                startStr: startT.toLocaleString('pt-BR'),
+                endStr: end.toLocaleString('pt-BR'),
+                netMs: (end - startT) - totalPause,
+                pauseMs: totalPause,
+                pCount: pCount
+            });
+            save(); resetTimer(); renderHistory(); refreshBIFilters(); // Adicionado refreshBIFilters
+        };
+
+        function resetTimer() {
+            clearInterval(timer); timer = null;
+            document.getElementById('display').innerText = "00:00:00";
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnPause').disabled = true;
+            document.getElementById('btnStop').disabled = true;
+            document.getElementById('inTask').value = "";
+        }
+
+        // Histórico & Filtros
+        function renderHistory() {
+            const search = document.getElementById('globalFilter').value.toLowerCase();
+            const catF = document.getElementById('filterCat').value;
+            const body = document.getElementById('histBody');
+
+            let filtered = db.filter(r => {
+                const matchSearch = Object.values(r).some(v => String(v).toLowerCase().includes(search));
+                const matchCat = !catF || r.cat === catF;
+                return matchSearch && matchCat;
+            });
+
+            filtered.sort((a,b) => {
+                let vA = a[currentSort.col], vB = b[currentSort.col];
+                return currentSort.asc ? (vA > vB ? 1 : -1) : (vA < vB ? 1 : -1);
+            });
+
+            body.innerHTML = "";
+            let totalMs = 0;
+            filtered.forEach(r => {
+                totalMs += r.netMs;
+                body.innerHTML += `<tr>
+                    <td><b>${r.collab}</b></td>
+                    <td>${r.cat}</td>
+                    <td>${r.task}</td>
+                    <td>${r.startStr}</td>
+                    <td>${r.endStr}</td>
+                    <td>${formatMs(r.pauseMs)}</td>
+                    <td>${r.pCount}</td>
+                    <td style="color:var(--accent); font-weight:700">${formatMs(r.netMs)}</td>
+                    <td>
+                        <i class="fa-solid fa-edit" style="cursor:pointer; color:var(--accent)" onclick="openEdit(${r.id})"></i>
+                        <i class="fa-solid fa-trash" style="cursor:pointer; color:var(--danger); margin-left:8px" onclick="deleteRec(${r.id})"></i>
+                    </td>
+                </tr>`;
+            });
+            document.getElementById('subTotal').innerText = formatMs(totalMs);
+        }
+
+        function sortTable(col) {
+            currentSort.asc = (currentSort.col === col) ? !currentSort.asc : true;
+            currentSort.col = col;
+            renderHistory();
+        }
+
+        // BI Charts
+        let activeCharts = {};
+        function initBI() {
+            if(activeCharts.c1) Object.values(activeCharts).forEach(c => c.destroy());
+
+            // Coleta os valores dos filtros do Dashboard
+            const filterCollab = document.getElementById('biFilterCollab').value;
+            const filterCat = document.getElementById('biFilterCat').value;
+            const filterStartDateStr = document.getElementById('biFilterStartDate').value;
+            const filterEndDateStr = document.getElementById('biFilterEndDate').value;
+
+            let filteredDb = db.filter(r => {
+                const matchCollab = !filterCollab || r.collab === filterCollab;
+                const matchCat = !filterCat || r.cat === filterCat;
+
+                let matchDate = true;
+                if (filterStartDateStr || filterEndDateStr) {
+                    const recordDate = parsePtBrDate(r.startStr);
+                    recordDate.setHours(0, 0, 0, 0); // Zera a hora para comparar apenas a data
+
+                    if (filterStartDateStr) {
+                        const startDate = new Date(filterStartDateStr);
+                        startDate.setHours(0, 0, 0, 0);
+                        if (recordDate < startDate) matchDate = false;
+                    }
+                    if (filterEndDateStr) {
+                        const endDate = new Date(filterEndDateStr);
+                        endDate.setHours(0, 0, 0, 0);
+                        if (recordDate > endDate) matchDate = false;
+                    }
+                }
+                return matchCollab && matchCat && matchDate;
+            });
+
+
+            // Gráfico 1 — Tempo por Colaborador (barra horizontal, valores em ms → formata eixo e tooltip)
+            const ctx1 = document.getElementById('chCollab').getContext('2d');
+            const uData = {}; filteredDb.forEach(r => uData[r.collab] = (uData[r.collab] || 0) + r.netMs);
+            activeCharts.c1 = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(uData),
+                    datasets: [{ label: 'Tempo', data: Object.values(uData), backgroundColor: '#0f172a' }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    scales: {
+                        x: {
+                            ticks: {
+                                callback: val => formatMs(val)
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ' ' + formatMs(ctx.raw)
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Gráfico 2 — Distribuição por Categoria (pizza, valores em ms → formata tooltip)
+            const ctx2 = document.getElementById('chCatTime').getContext('2d');
+            const cData = {}; filteredDb.forEach(r => cData[r.cat] = (cData[r.cat] || 0) + r.netMs);
+            activeCharts.c2 = new Chart(ctx2, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(cData),
+                    datasets: [{ data: Object.values(cData), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#6366f1'] }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ' ' + formatMs(ctx.raw)
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Gráfico 3 — Volumetria de Atividades (contagem, sem formatação de tempo)
+            const ctx3 = document.getElementById('chVol').getContext('2d');
+            const vData = {}; filteredDb.forEach(r => vData[r.cat] = (vData[r.cat] || 0) + 1);
+            activeCharts.c3 = new Chart(ctx3, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(vData),
+                    datasets: [{ label: 'Atividades', data: Object.values(vData), backgroundColor: '#3b82f6' }]
+                },
+                options: { maintainAspectRatio: false }
+            });
+
+            // Gráfico 4 — Eficiência Operacional (doughnut, valores em ms → formata tooltip)
+            const ctx4 = document.getElementById('chEff').getContext('2d');
+            const prod = filteredDb.reduce((a,b) => a + b.netMs, 0), pause = filteredDb.reduce((a,b) => a + b.pauseMs, 0);
+            activeCharts.c4 = new Chart(ctx4, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Produzido', 'Pausado'],
+                    datasets: [{ data: [prod, pause], backgroundColor: ['#10b981','#f59e0b'] }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ' ' + formatMs(ctx.raw)
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Utils & Data
+        function formatMs(ms) {
+            let s = Math.floor(ms/1000), m = Math.floor(s/60), h = Math.floor(m/60);
+            return `${String(h).padStart(2,'0')}:${String(m%60).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+        }
+
+        // Nova função para parsear a string de data pt-BR para objeto Date
+        function parsePtBrDate(dateString) {
+            const [datePart, timePart] = dateString.split(', ');
+            const [day, month, year] = datePart.split('/').map(Number);
+            const [hours, minutes, seconds] = timePart.split(':').map(Number);
+            return new Date(year, month - 1, day, hours, minutes, seconds);
+        }
+
+        function refreshCats() {
+            const selects = [document.getElementById('selCat'), document.getElementById('filterCat'), document.getElementById('edCat')];
+            const body = document.getElementById('catBody');
+            body.innerHTML = "";
+            selects.forEach(s => {
+                s.innerHTML = s.id === 'filterCat' ? '<option value="">Todas</option>' : '';
+                cats.forEach(c => s.innerHTML += `<option value="${c.name}">${c.name}</option>`);
+            });
+            cats.forEach((c,i) => {
+                body.innerHTML += `<tr><td><b>${c.name}</b></td><td>${c.desc}</td><td><i class="fa-solid fa-trash" style="cursor:pointer" onclick="deleteCat(${i})"></i></td></tr>`;
+            });
+        }
+
+        // Nova função para popular os filtros do Dashboard
+        function refreshBIFilters() {
+            const biFilterCollab = document.getElementById('biFilterCollab');
+            const biFilterCat = document.getElementById('biFilterCat');
+
+            // Popula Colaboradores
+            const uniqueCollabs = [...new Set(db.map(r => r.collab))].sort();
+            biFilterCollab.innerHTML = '<option value="">Todos</option>';
+            uniqueCollabs.forEach(collab => {
+                biFilterCollab.innerHTML += `<option value="${collab}">${collab}</option>`;
+            });
+
+            // Popula Categorias (reutiliza a lista de categorias já existente)
+            biFilterCat.innerHTML = '<option value="">Todas</option>';
+            cats.forEach(c => {
+                biFilterCat.innerHTML += `<option value="${c.name}">${c.name}</option>`;
+            });
+        }
+
+        function addCategory() {
+            const n = document.getElementById('newCatName').value, d = document.getElementById('newCatDesc').value;
+            if(!n) return; cats.push({name:n, desc:d}); 
+            localStorage.setItem('gpo_cats_final', JSON.stringify(cats));
+            document.getElementById('newCatName').value = ""; document.getElementById('newCatDesc').value = "";
+            refreshCats(); refreshBIFilters(); // Adicionado refreshBIFilters
+        }
+
+        function deleteCat(i) { cats.splice(i,1); localStorage.setItem('gpo_cats_final', JSON.stringify(cats)); refreshCats(); refreshBIFilters(); } // Adicionado refreshBIFilters
+        function save() { localStorage.setItem('gpo_db_final', JSON.stringify(db)); }
+
+        // Excel Ops
+        async function exportExcel() {
+            let csv = "\ufeffColaborador;Categoria;Tarefa;Inicio;Fim;Tempo Pausado;Qtd Pausas;Tempo Liquido\n";
+            db.forEach(r => csv += `${r.collab};${r.cat};${r.task};${r.startStr};${r.endStr};${formatMs(r.pauseMs)};${r.pCount};${formatMs(r.netMs)}\n`);
+
+            try {
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: `GPO_Export_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`,
+                        types: [{ description: 'Arquivo CSV', accept: {'text/csv': ['.csv']} }]
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(csv);
+                    await writable.close();
+                } else {
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
+                    a.download = `GPO_Export_${new Date().toLocaleDateString().replace(/\//g,'-')}.csv`;
+                    a.click();
+                }
+            } catch (err) {
+                if (err.name !== 'AbortError') console.error(err);
+            }
+        }
+
+        function importExcel(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (f) => {
+                const lines = f.target.result.split('\n').slice(1);
+                lines.forEach(line => {
+                    const c = line.split(';');
+                    if(c.length > 5) {
+                        db.push({
+                            id: Date.now() + Math.random(), collab: c[0], cat: c[1], task: c[2],
+                            startStr: c[3], endStr: c[4], netMs: 0, pauseMs: 0, pCount: parseInt(c[6]) || 0
+                        });
+                    }
+                });
+                save(); renderHistory(); refreshBIFilters(); alert("Importação concluída!"); // Adicionado refreshBIFilters
+            };
+            reader.readAsText(file);
+        }
+
+        // Edit
+        let editId;
+        function openEdit(id) { 
+            editId = id; const r = db.find(x=>x.id===id);
+            document.getElementById('edCollab').value = r.collab;
+            document.getElementById('edCat').value = r.cat;
+            document.getElementById('edTask').value = r.task;
+            document.getElementById('editModal').style.display = 'flex';
+        }
+        function closeEdit() { document.getElementById('editModal').style.display = 'none'; }
+        function saveEdit() {
+            const r = db.find(x=>x.id===editId);
+            r.collab = document.getElementById('edCollab').value;
+            r.cat = document.getElementById('edCat').value;
+            r.task = document.getElementById('edTask').value;
+            save(); closeEdit(); renderHistory(); refreshBIFilters(); // Adicionado refreshBIFilters
+        }
+        function deleteRec(id) { if(confirm("Excluir registro?")) { db = db.filter(x=>x.id!==id); save(); renderHistory(); refreshBIFilters(); }} // Adicionado refreshBIFilters
+    </script>
+</body>
+</html>
